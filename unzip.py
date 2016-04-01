@@ -1,14 +1,114 @@
-import Queue
-import threading
+#!/usr/bin/env python
+"""
+unzip
+
+Python version of the unzip tool.
+
+Copyright 2016 qimmortal/utonium
+"""
+# -------------------------------------------------------------------------------- 
+# Imports
+# -------------------------------------------------------------------------------- 
+import argparse
+import logging
 import os
-import zipfile
+import Queue
 import re
+import sys
+import threading
+import zipfile
 
-my_archive = "firefox-47.0a1.en-US.win32.reftest.tests.zip"
+# -------------------------------------------------------------------------------- 
+# Globals
+# -------------------------------------------------------------------------------- 
+EXIT_OK = 0
+EXIT_ERROR = 1
 
-archive = zipfile.ZipFile(my_archive, 'r')
+# -------------------------------------------------------------------------------- 
+# Main
+# -------------------------------------------------------------------------------- 
+def main():
+    """ Please run with --help from the command line for the usage message.
+    """
+    global logger
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+    logger = logging.getLogger()
+
+    try:
+        parser = argparse.ArgumentParser()
+
+        #Usage: unzip [-Z] [-opts[modifiers]] file[.zip] [list] [-x xlist] [-d exdir]
+        #  Default action is to extract files in list, except those in xlist, to exdir;
+        #  file[.zip] may be a wildcard.  -Z => ZipInfo mode ("unzip -Z" for usage).
+        #
+        #  -p  extract files to pipe, no messages     -l  list files (short format)
+        #  -f  freshen existing files, create none    -t  test compressed archive data
+        #  -u  update files, create if necessary      -z  display archive comment
+        #  -x  exclude files that follow (in xlist)   -d  extract files into exdir
+        #
+        #modifiers:                                   -q  quiet mode (-qq => quieter)
+        #  -n  never overwrite existing files         -a  auto-convert any text files
+        #  -o  overwrite files WITHOUT prompting      -aa treat ALL files as text
+        #  -j  junk paths (do not make directories)   -v  be verbose/print version info
+        #  -C  match filenames case-insensitively     -L  make (some) names lowercase
+        #  -X  restore UID/GID info                   -V  retain VMS version numbers
+        #  -K  keep setuid/setgid/tacky permissions   -M  pipe through "more" pager
+        #
+        #Examples (see unzip.txt for more info):
+        #  unzip data1 -x joe   => extract all files except joe from zipfile data1.zip
+        #  unzip -p foo | more  => send contents of foo.zip via pipe into program more
+        #  unzip -fo foo ReadMe => quietly replace existing ReadMe if archive file newer
+
+        parser.add_argument("-q",
+                            dest="quiet", action="store_true", default=None,
+                            help="quiet mode")
+
+        parser.add_argument("zipfile",
+                            nargs=1, default=None,
+                            help="the file to unzip")
+
+        args = parser.parse_args()
+
+        if args.zipfile is None:
+            msg = "Please specify the file to unzip"
+            logger.error(msg)
+            raise UnzipError(msg)
+
+        the_zipfile = args.zipfile[0]
+        if not os.path.exists(the_zipfile):
+            msg = "Specified zipfile '%s' does not exist" % the_zipfile
+            logger.error(msg)
+            raise UnzipError(msg)
+
+        zfh = zipfile.ZipFile(the_zipfile, 'r')
+
+        with BackgroundFileCloser() as bfc:
+            for item in zfh.namelist():
+                data = zfh.read(item)
+
+                if '/' in item:
+                    subeddir = re.sub('(\/[^\/]+$)', '/', item, count=0)
+                    mkdir_recursive(subeddir)
+
+                if item.endswith('/'):            
+                    mkdir_recursive(item)
+                else:
+                    fh = open(item, 'wb')
+                    fh.write(data)
+                    bfc.close(fh)
+
+
+    except argparse.ArgumentError, e:
+        logger.error("Argument error: %s" % str(e))
+        raise
+
+    return EXIT_OK
+
 
 class BackgroundFileCloser(object):
+    """ The Background File Closer pushes file closes into a
+        background thread.
+    """
     def __init__(self):
         self._running = False
         self._entered = False
@@ -46,9 +146,10 @@ class BackgroundFileCloser(object):
                     break
 
     def close(self, fh):
-        """Schedule a file for closing."""
+        """Schedule a file for closing.
+        """
         if not self._entered:
-            raise Exception('can only call close() when context manager active')
+            raise UnzipError("can only call close() when context manager active")
 
         if self._exc:
             e = self._exc
@@ -61,6 +162,7 @@ class BackgroundFileCloser(object):
 
         self._queue.put(fh, block=True, timeout=None)
 
+
 def mkdir_recursive(path):
     # This was working but is handeled in regex for now 
     # Would be good if we can go back and save an import
@@ -68,24 +170,17 @@ def mkdir_recursive(path):
     #print sub_path + " test subpath"
     #if not os.path.exists(sub_path):
     #   os.makedirs(sub_path)
-       #print "test 1 " + sub_path
+
     if not os.path.exists(path):
        os.makedirs(path)
-       #print "test 2 " + path
-        
-        
 
-        
-with BackgroundFileCloser() as bfc:
-    for item in archive.namelist():
-        data = archive.read(item)
-        if '/' in item:
-            subeddir = re.sub('(\/[^\/]+$)', '/', item, count=0)
-            mkdir_recursive(subeddir)
-        if item.endswith('/'):            
-            mkdir_recursive(item)
-        else:
-            #print item, len(data)
-            fh = open(item, 'wb')
-            fh.write(data)
-            bfc.close(fh)
+
+class UnzipError(Exception):
+    pass
+
+# ---------------------------------------------------------------------------------------------
+# Execute main and exit with the given status.
+# ---------------------------------------------------------------------------------------------
+if __name__ == "__main__":
+    exit_status = main()
+    sys.exit(exit_status)
