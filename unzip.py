@@ -58,7 +58,9 @@ def main():
         #  unzip data1 -x joe   => extract all files except joe from zipfile data1.zip
         #  unzip -p foo | more  => send contents of foo.zip via pipe into program more
         #  unzip -fo foo ReadMe => quietly replace existing ReadMe if archive file newer
-
+        
+        
+        
         parser.add_argument("-q",
                             dest="quiet", action="store_true", default=None,
                             help="quiet mode")
@@ -75,9 +77,7 @@ def main():
                             nargs=1, default=None,
                             help="the file to unzip")
         
-        parser.add_argument('list', nargs=argparse.REMAINDER)                       
-
-        args = parser.parse_args()
+        args, flist = parser.parse_known_args()
 
         if args.zipfile is None:
             msg = "Please specify the file to unzip"
