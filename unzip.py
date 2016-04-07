@@ -63,9 +63,19 @@ def main():
                             dest="quiet", action="store_true", default=None,
                             help="quiet mode")
 
+        parser.add_argument("-o",
+                            dest="overwrite", action="store_true", default=None,
+                            help="Overwrite exsiting files")
+        
+        parser.add_argument("-d",
+                            type=str, default=None,
+                            help="Directory to extract files to")
+                            
         parser.add_argument("zipfile",
                             nargs=1, default=None,
                             help="the file to unzip")
+        
+        parser.add_argument('list', nargs=argparse.REMAINDER)                       
 
         args = parser.parse_args()
 
@@ -85,7 +95,8 @@ def main():
         with BackgroundFileCloser() as bfc:
             for item in zfh.namelist():
                 data = zfh.read(item)
-
+                if args.d:
+                    item = args.d + '/' + item 
                 if '/' in item:
                     subeddir = re.sub('(\/[^\/]+$)', '/', item, count=0)
                     mkdir_recursive(subeddir)
@@ -96,6 +107,7 @@ def main():
                     fh = open(item, 'wb')
                     fh.write(data)
                     bfc.close(fh)
+                    
 
 
     except argparse.ArgumentError, e:
